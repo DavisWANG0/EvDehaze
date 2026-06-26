@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.so
+outputs/
+save_dir/
+datasets/
+runs/
+*.log
+shard_*.json
+.DS_Store
+.vscode/
+
+# Model weights / checkpoints (kept out of version control)
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+weights/

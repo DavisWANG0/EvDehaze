@@ -1,0 +1,183 @@
+# ==============================================================================
+# EvDehaze on NH-HAZE: event-conditioned ResShift latent diffusion (15 steps).
+#   input 128 -> bicubic Up -> frozen VQ-VAE encode -> ResShift diffusion (15 steps)
+#   (EvDehaze UNet conditioned on hazy + event TPR) -> VAE decode -> bicubic Down -> 128
+# Resampling between 128px and the VAE resolution is plain bicubic (no learnable
+# resampler); the VAE stays frozen and only the UNet and a zero-init latent
+# residual correction are trained.
+# Metrics follow the tiled-128 protocol (full image split into 128 grid tiles,
+# per-tile PSNR/SSIM/LPIPS then averaged), identical to the SOTS evaluation.
+# ==============================================================================
+
+trainer:
+  target: trainer.TrainerEventResampleLPIPS
+
+resume: ~
+save_dir: outputs/evdehaze-nhhaze
+
+model:
+  target: models.evdehaze.EvDehaze
+  ckpt_path: ~
+  tolerant_load: True
+  params:
+    image_size: 64                   # latent size: 128 -> Up -> 256 -> VAE f4 -> 64
+    in_channels: 3
+    model_channels: 160
+    out_channels: 3
+    attention_resolutions: [32, 16, 8]
+    dropout: 0.0
+    channel_mult: [1, 2, 2, 4]
+    num_res_blocks: [2, 2, 2, 2]
+    conv_resample: True
+    dims: 2
+    use_fp16: False
+    num_head_channels: 32
+    use_scale_shift_norm: True
+    resblock_updown: False
+    swin_depth: 2
+    swin_embed_dim: 192
+    window_size: 8
+    mlp_ratio: 4
+    cond_lq: True
+    lq_size: 128
+    event_in_channels: 8             # 4 temporal bins x 2 polarities
+    event_encoder_type: default      # 2-conv event encoder
+
+resample:
+  # Up/Down are plain bicubic (no learnable resampler). The only trained component
+  # is a zero-init residual correction on the predicted clean latent, applied right
+  # before the frozen VAE decode to remove the systematic VAE-latent bias.
+  ckpt_path: ~
+  latent_correction: True
+  latent_kwargs:
+    hidden: 64
+    num_blocks: 2
+
+diffusion:
+  target: models.script_util.create_gaussian_diffusion
+  params:
+    sf: 1
+    schedule_name: exponential
+    schedule_kwargs:
+      power: 0.3
+    etas_end: 0.99
+    steps: 15
+    min_noise_level: 0.1
+    kappa: 2.0
+    weighted_mse: False
+    predict_type: xstart
+    timestep_respacing: ~
+    scale_factor: 1.0
+    normalize_input: True
+    latent_flag: True
+
+autoencoder:
+  target: ldm.models.autoencoder.VQModelTorch
+  ckpt_path: weights/autoencoder_vq_f4.pth
+  tune_decoder: False
+  params:
+    lora_tune_decoder: False
+    embed_dim: 3
+    n_embed: 8192
+    ddconfig:
+      double_z: False
+      z_channels: 3
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [1, 2, 4]
+      num_res_blocks: 2
+      attn_resolutions: []
+      dropout: 0.0
+      padding_mode: zeros
+
+lpips:
+  # both alex and vgg perceptual loss for training is OK;
+  # computed with AlexNet in inference.py (--lpips_net alex).
+  net: alex
+
+data:
+  train:
+    type: paired_aligned
+    params:
+      dir_path: datasets/NH-HAZE/train/hazy
+      dir_path_extra: datasets/NH-HAZE/train/clear
+      pch_size: 128
+      mean: 0.5
+      std: 0.5
+      max_value: 255
+      pass_aug: False
+      only_hflip: False
+      only_vflip: False
+      only_hvflip: False
+      im_exts: png
+      length: ~
+      recursive: False
+      need_path: False
+      cache: True
+      event_resize_mode: bilinear
+      event_channels: 8
+      event_dirs:
+        preprocessed: datasets/NH-HAZE/train/clear_events_preprocessed
+
+  val:
+    type: paired_aligned
+    params:
+      dir_path: datasets/NH-HAZE/test/hazy
+      dir_path_extra: datasets/NH-HAZE/test/clear
+      pch_size: 128
+      mean: ${data.train.params.mean}
+      std: ${data.train.params.std}
+      max_value: ${data.train.params.max_value}
+      pass_aug: True
+      im_exts: png
+      length: ~
+      recursive: False
+      need_path: False
+      is_val: True
+      cache: True
+      tile_val: True                 # tiled-128: split image into 128 grid tiles, per-tile metric then average
+      event_resize_mode: bilinear
+      event_channels: 8
+      event_dirs:
+        preprocessed: datasets/NH-HAZE/test/clear_events_preprocessed
+
+train:
+  lr: 8e-5
+  lr_min: 1e-5
+  lr_schedule: cosin
+  warmup_iterations: 500
+
+  batch: [2, 4]                      # [train_batch_total (split across GPUs), val_batch]
+  microbatch: 1
+
+  num_workers: 8
+  prefetch_factor: 4
+
+  weight_decay: 1e-5
+  ema_rate: 0.999
+  iterations: 6000
+
+  save_freq: 1000
+  log_freq: [100, 2000, 4]
+
+  # [latent-mse, pixel-lpips, pixel-l1-aux]
+  loss_coef: [1.2, 2.0, 0.05]
+
+  local_logging: True
+  tf_logging: False
+
+  use_ema_val: True
+  val_freq: 1000
+  val_y_channel: True
+  val_resolution: 128
+  val_padding_mode: reflect
+
+  use_amp: True
+  seed: 123456
+  global_seeding: False
+
+  compile:
+    flag: False
+    mode: reduce-overhead

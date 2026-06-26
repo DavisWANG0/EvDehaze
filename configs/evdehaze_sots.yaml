@@ -1,0 +1,188 @@
+# ==============================================================================
+# EvDehaze on SOTS (RESIDE indoor): event-conditioned ResShift latent diffusion.
+#   input 128 -> bicubic Up -> frozen VQ-VAE encode -> ResShift diffusion (15 steps)
+#   (EvDehaze UNet conditioned on hazy + event TPR) -> VAE decode -> bicubic Down -> 128
+# Resampling between 128px and the VAE resolution is plain bicubic (no learnable
+# resampler), so diffusion- and transformer-based methods are compared at 128x128.
+# A zero-init latent residual correction on the predicted clean latent removes the
+# systematic VAE-latent bias. The VAE stays frozen.
+# Event features come from a temporal pyramid representation (L=3 x M=2) followed
+# by a 3-conv + pooling encoder, fused into the UNet via cross-attention.
+# ==============================================================================
+
+trainer:
+  target: trainer.TrainerEventResampleLPIPS
+
+resume: ~
+save_dir: outputs/evdehaze
+
+model:
+  target: models.evdehaze.EvDehaze
+  ckpt_path: ~
+  params:
+    image_size: 64
+    in_channels: 3
+    model_channels: 160
+    out_channels: 3
+    attention_resolutions: [32, 16, 8]
+    dropout: 0.0
+    channel_mult: [1, 2, 2, 4]
+    num_res_blocks: [2, 2, 2, 2]
+    conv_resample: True
+    dims: 2
+    use_fp16: False
+    num_head_channels: 32
+    use_scale_shift_norm: True
+    resblock_updown: False
+    swin_depth: 2
+    swin_embed_dim: 192
+    window_size: 8
+    mlp_ratio: 4
+    cond_lq: True
+    lq_size: 128
+    event_in_channels: 8          # 4 temporal bins x 2 polarities
+    event_encoder_type: pyramid   # TPR (L=3 x M=2) -> 3 conv + pooling encoder
+
+resample:
+  # Up/Down are plain bicubic (no learnable resampler). The only trained component
+  # is a zero-init residual correction on the predicted clean latent, applied right
+  # before the frozen VAE decode to remove the systematic VAE-latent bias.
+  ckpt_path: ~
+  latent_correction: True
+  latent_kwargs:
+    hidden: 64
+    num_blocks: 2
+
+diffusion:
+  target: models.script_util.create_gaussian_diffusion
+  params:
+    sf: 1
+    schedule_name: exponential
+    schedule_kwargs:
+      power: 0.3
+    etas_end: 0.99
+    steps: 15
+    min_noise_level: 0.1
+    kappa: 2.0
+    weighted_mse: False
+    predict_type: xstart
+    timestep_respacing: ~
+    scale_factor: 1.0
+    normalize_input: True
+    latent_flag: True
+
+autoencoder:
+  target: ldm.models.autoencoder.VQModelTorch
+  ckpt_path: weights/autoencoder_vq_f4.pth
+  tune_decoder: False
+  params:
+    lora_tune_decoder: False
+    embed_dim: 3
+    n_embed: 8192
+    ddconfig:
+      double_z: False
+      z_channels: 3
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [1, 2, 4]
+      num_res_blocks: 2
+      attn_resolutions: []
+      dropout: 0.0
+      padding_mode: zeros
+
+lpips:
+  # both alex and vgg perceptual loss for training is OK;
+  # computed with AlexNet in inference.py (--lpips_net alex).
+  net: alex
+
+data:
+  train:
+    type: paired_aligned
+    params:
+      dir_path: datasets/ITS_v2/hazy
+      dir_path_extra: datasets/ITS_v2/clear
+      its_v2_naming: True
+      pch_size: 128
+      mean: 0.5
+      std: 0.5
+      max_value: 255
+      pass_aug: False
+      only_hflip: False
+      only_vflip: False
+      only_hvflip: False
+      im_exts: png
+      length: ~
+      recursive: False
+      need_path: False
+      cache: False
+      event_resize_mode: bilinear
+      event_channels: 8
+      event_dirs:
+        preprocessed: datasets/ITS_v2/clear_events_preprocessed
+
+  val:
+    type: paired_aligned
+    params:
+      dir_path: datasets/SOTS/nyuhaze500/hazy
+      dir_path_extra: datasets/SOTS/nyuhaze500/gt
+      its_v2_naming: True
+      pch_size: 128
+      mean: ${data.train.params.mean}
+      std: ${data.train.params.std}
+      max_value: ${data.train.params.max_value}
+      pass_aug: True
+      im_exts: png
+      length: ~
+      recursive: False
+      need_path: False
+      is_val: True
+      tile_val: True
+      event_resize_mode: bilinear
+      event_channels: 8
+      event_dirs:
+        preprocessed: datasets/SOTS/nyuhaze500/gt_events_preprocessed
+
+train:
+  lr: 8e-5
+  lr_min: 1e-5
+  lr_schedule: cosin
+  warmup_iterations: 5000
+
+  # global batch (split across GPUs internally as batch // num_gpus)
+  batch: [24, 8]
+  microbatch: 4
+
+  num_workers: 8
+  prefetch_factor: 4
+
+  weight_decay: 1e-5
+  ema_rate: 0.999
+  iterations: 40000
+
+  save_freq: 40000
+  log_freq: [100, 5000, 4]
+
+  # L = 1.0*L_pixel + 0.2*LPIPS; L_pixel = latent-MSE + L1 + Y-MSE + low-freq-Y
+  loss_coef: [1.2, 0.2, 0.1]
+  y_mse_coef: 10.0
+  lowfreq_y_mse_coef: 12.0
+  lowfreq_y_sizes: [2, 4, 8, 16, 32, 64]
+
+  local_logging: True
+  tf_logging: False
+
+  use_ema_val: True
+  val_freq: 10000
+  val_y_channel: True
+  val_resolution: 128
+  val_padding_mode: reflect
+
+  use_amp: True
+  seed: 123456
+  global_seeding: False
+
+  compile:
+    flag: False
+    mode: reduce-overhead

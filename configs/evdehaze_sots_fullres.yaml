@@ -1,0 +1,161 @@
+# ==============================================================================
+# EvDehaze on SOTS — original-resolution (qualitative) configuration.
+#
+# The released numeric configuration (configs/evdehaze_sots.yaml) evaluates on
+# 128x128 tiles so diffusion- and transformer-based methods are compared at the
+# same resolution. For the final visualizations we instead run the *whole* image
+# at its original resolution (no tiling / no squeeze to 128). The UNet matches
+# event features relative to the input latent size, so event guidance stays
+# active at any resolution (models.evdehaze_flexible_resolution.EvDehazeFlexibleResolution).
+#
+# The pipeline is otherwise identical to the release: the frozen VQ-f4 VAE is
+# bridged by the same bicubic Up/Down (x2) it was trained with, the diffusion
+# UNet, event encoder and latent residual correction are unchanged, and a
+# trained EvDehaze checkpoint loads as-is. This config is meant for visualize.py
+# (qualitative output at the native image size), not for metric reporting.
+# visualize.py defaults to --max_side 256: downscale for inference, upscale back
+# to native on save (avoids VAE / attention OOM on large images).
+# ==============================================================================
+
+trainer:
+  target: trainer.TrainerEventResampleLPIPS
+
+resume: ~
+save_dir: outputs/evdehaze_fullres
+
+model:
+  target: models.evdehaze_flexible_resolution.EvDehazeFlexibleResolution
+  ckpt_path: ~
+  params:
+    image_size: 64
+    in_channels: 3
+    model_channels: 160
+    out_channels: 3
+    attention_resolutions: [32, 16, 8]
+    dropout: 0.0
+    channel_mult: [1, 2, 2, 4]
+    num_res_blocks: [2, 2, 2, 2]
+    conv_resample: True
+    dims: 2
+    use_fp16: False
+    num_head_channels: 32
+    use_scale_shift_norm: True
+    resblock_updown: False
+    swin_depth: 2
+    swin_embed_dim: 192
+    window_size: 8
+    mlp_ratio: 4
+    cond_lq: True
+    lq_size: 128
+    event_in_channels: 8          # 4 temporal bins x 2 polarities
+    event_encoder_type: pyramid   # TPR (L=3 x M=2) -> 3 conv + pooling encoder
+
+resample:
+  # Same bicubic VAE bridge as the release (Up/Down x2 around the frozen VQ-f4
+  # VAE); here it is applied to the whole native image rather than 128 tiles.
+  # The only trained component is the zero-init latent residual correction
+  # (identical weights to the 128px release).
+  ckpt_path: ~
+  latent_correction: True
+  latent_kwargs:
+    hidden: 64
+    num_blocks: 2
+
+diffusion:
+  target: models.script_util.create_gaussian_diffusion
+  params:
+    sf: 1
+    schedule_name: exponential
+    schedule_kwargs:
+      power: 0.3
+    etas_end: 0.99
+    steps: 15
+    min_noise_level: 0.1
+    kappa: 2.0
+    weighted_mse: False
+    predict_type: xstart
+    timestep_respacing: ~
+    scale_factor: 1.0
+    normalize_input: True
+    latent_flag: True
+
+autoencoder:
+  target: ldm.models.autoencoder.VQModelTorch
+  ckpt_path: weights/autoencoder_vq_f4.pth
+  tune_decoder: False
+  params:
+    lora_tune_decoder: False
+    embed_dim: 3
+    n_embed: 8192
+    ddconfig:
+      double_z: False
+      z_channels: 3
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [1, 2, 4]
+      num_res_blocks: 2
+      attn_resolutions: []
+      dropout: 0.0
+      padding_mode: zeros
+
+lpips:
+  # both alex and vgg perceptual loss for training is OK;
+  # computed with AlexNet in inference.py (--lpips_net alex).
+  net: alex
+
+data:
+  val:
+    type: paired_aligned
+    params:
+      dir_path: datasets/SOTS/nyuhaze500/hazy
+      dir_path_extra: datasets/SOTS/nyuhaze500/gt
+      its_v2_naming: True
+      pch_size: 128
+      mean: 0.5
+      std: 0.5
+      max_value: 255
+      pass_aug: False
+      im_exts: png
+      length: ~
+      recursive: False
+      need_path: True
+      is_val: True
+      tile_val: False        # full-image loading via _load_full (visualize.py)
+      event_resize_mode: bilinear
+      event_channels: 8
+      event_dirs:
+        preprocessed: datasets/SOTS/nyuhaze500/gt_events_preprocessed
+
+train:
+  lr: 8e-5
+  lr_min: 1e-5
+  lr_schedule: cosin
+  warmup_iterations: 5000
+  batch: [24, 8]
+  microbatch: 4
+  num_workers: 8
+  prefetch_factor: 4
+  weight_decay: 1e-5
+  ema_rate: 0.999
+  iterations: 40000
+  save_freq: 40000
+  log_freq: [100, 5000, 4]
+  loss_coef: [1.2, 0.2, 0.1]
+  y_mse_coef: 10.0
+  lowfreq_y_mse_coef: 12.0
+  lowfreq_y_sizes: [2, 4, 8, 16, 32, 64]
+  local_logging: True
+  tf_logging: False
+  use_ema_val: False
+  val_freq: 10000
+  val_y_channel: True
+  val_resolution: 128
+  val_padding_mode: reflect
+  use_amp: False
+  seed: 123456
+  global_seeding: False
+  compile:
+    flag: False
+    mode: reduce-overhead
