@@ -38,8 +38,7 @@ from utils.util_common import get_obj_from_str
 from utils import util_image
 from utils.realworld_vis import (
     event_tensor_to_vis,
-    save_channel_histogram,
-    save_triptych,
+    save_combined_panel,
 )
 from utils.event_voxel import (
     load_event_voxel_for_rgb,
@@ -403,11 +402,10 @@ def main():
             if ev is not None:
                 ev_vis = event_tensor_to_vis(ev, out_h, out_w)
                 Image.fromarray(ev_vis).save(f"{diag_base}_event_vis.png")
-                save_triptych(hazy_rgb, ev_vis, restored_rgb, f"{diag_base}_triptych.png")
-            save_channel_histogram(
-                hazy_rgb, restored_rgb, f"{diag_base}_channel_hist.png",
-                title=f"{name} — channel histogram",
-            )
+                save_combined_panel(
+                    hazy_rgb, ev_vis, restored_rgb, f"{diag_base}_panel.png",
+                    title=f"{name} — dehazing panel",
+                )
 
         frame_tag = f"sots640x480" if args.sots_frame else f"{W_native}x{H_native}"
         print(f"  [{i+1}/{len(pairs)}] {name} native={W_native}x{H_native} "

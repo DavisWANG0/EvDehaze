@@ -23,8 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from utils.realworld_vis import (
     event_tensor_to_vis,
-    save_channel_histogram,
-    save_triptych,
+    save_combined_panel,
 )
 from utils.event_voxel import SOTS_EVENT_WINDOW_MS
 from visualize_realworld import collect_pairs, prepare_display_pair
@@ -49,7 +48,7 @@ def parse_args():
                     help="must match the inference run (384 typical with --sots_frame)")
     ap.add_argument("--no_event", action="store_true")
     ap.add_argument("--skip_existing", action="store_true",
-                    help="skip if event_vis and channel_hist already exist")
+                    help="skip if panel png already exists")
     args = ap.parse_args()
     if args.sots_frame and args.max_side == 256:
         args.max_side = 384
@@ -80,9 +79,8 @@ def main():
             continue
 
         ev_out = out_dir / f"{stem}_event_vis.png"
-        hist_out = out_dir / f"{stem}_channel_hist.png"
-        trip_out = out_dir / f"{stem}_triptych.png"
-        if args.skip_existing and ev_out.is_file() and hist_out.is_file():
+        panel_out = out_dir / f"{stem}_panel.png"
+        if args.skip_existing and panel_out.is_file():
             print(f"  [{i+1}] skip existing {stem}", flush=True)
             continue
 
@@ -97,15 +95,18 @@ def main():
         if ev is not None:
             ev_vis_rgb = event_tensor_to_vis(ev, oh, ow)
             Image.fromarray(ev_vis_rgb).save(ev_out)
-
-        save_channel_histogram(
-            hazy_rgb, restored_rgb, str(hist_out), title=f"{stem} — channel histogram",
-        )
-        if ev_vis_rgb is not None:
-            save_triptych(hazy_rgb, ev_vis_rgb, restored_rgb, str(trip_out))
+            save_combined_panel(
+                hazy_rgb, ev_vis_rgb, restored_rgb, str(panel_out),
+                title=f"{stem} — dehazing panel",
+            )
+        else:
+            save_combined_panel(
+                hazy_rgb, np.zeros_like(hazy_rgb), restored_rgb, str(panel_out),
+                title=f"{stem} — dehazing panel",
+            )
 
         print(f"  [{i+1}/{len(restored_paths)}] {stem} aligned {ow}x{oh} -> "
-              f"event_vis, channel_hist, triptych", flush=True)
+              f"event_vis, panel", flush=True)
 
     print(f"annotated -> {out_dir}")
 
