@@ -1,4 +1,4 @@
-<h2 align="center">From Events to Clarity:</h2><h2 align="center">The Event-Guided Diffusion Framework for Dehazing</h2>
+<h2 align="center">From Events to Clarity:<br>The Event-Guided Diffusion Framework for Dehazing</h2>
 
 <div align="center">
 
@@ -72,6 +72,21 @@ We also augment [RESIDE/SOTS](https://sites.google.com/view/reside-dehaze-datase
 
 <p align="center">
   <img src="assets/figs/realworld_evaluation.png" width="95%" alt="EvDehaze real-world results">
+</p>
+
+### Real-World Visualization
+
+<p align="center">
+  <video src="assets/videos/realworld_panel.mp4" controls width="95%"></video>
+</p>
+
+[Download the real-world panel video](assets/videos/realworld_panel.mp4).
+
+The following panels show representative real-world UAV captures with hazy input, event visualization, dehazed output, and RGB/luma histogram comparisons.
+
+<p align="center">
+  <img src="assets/figs/realworld_panel_083823.png" width="48%" alt="Real-world panel 083823">
+  <img src="assets/figs/realworld_panel_083826.png" width="48%" alt="Real-world panel 083826">
 </p>
 
 ### Quantitative Comparison
