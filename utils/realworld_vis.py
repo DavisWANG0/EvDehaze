@@ -19,20 +19,21 @@ def _to_rgb_uint8(img):
 
 
 def event_tensor_to_vis(event, out_h, out_w):
-    """Render event voxel activity as a JET colormap (RGB uint8)."""
+    """Render event voxel activity as a JET colormap (RGB uint8, HxW)."""
     if hasattr(event, "detach"):
         ev = event.detach().cpu().numpy()
     else:
         ev = np.asarray(event)
     if ev.ndim == 4:
         ev = ev[0]
+    assert ev.shape[1] == out_h and ev.shape[2] == out_w, (
+        f"event spatial {ev.shape[1:]} != output ({out_h}, {out_w})"
+    )
     activity = np.mean(np.abs(ev), axis=0)
     if activity.max() > activity.min():
         activity = (activity - activity.min()) / (activity.max() - activity.min())
     vis = cv2.applyColorMap((activity * 255).astype(np.uint8), cv2.COLORMAP_JET)
     vis = cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
-    if vis.shape[0] != out_h or vis.shape[1] != out_w:
-        vis = cv2.resize(vis, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
     return vis
 
 
@@ -85,14 +86,14 @@ def save_channel_histogram(hazy_rgb, restored_rgb, save_path, title=""):
 
 
 def save_triptych(hazy_rgb, event_vis_rgb, restored_rgb, save_path):
-    """Hazy | event_vis | restored panel for video frames."""
+    """Hazy | event_vis | restored panel (all same HxW)."""
     hazy = _to_rgb_uint8(hazy_rgb)
     event_vis = _to_rgb_uint8(event_vis_rgb)
     restored = _to_rgb_uint8(restored_rgb)
     h, w = hazy.shape[:2]
-    if event_vis.shape[:2] != (h, w):
-        event_vis = cv2.resize(event_vis, (w, h), interpolation=cv2.INTER_LINEAR)
-    if restored.shape[:2] != (h, w):
-        restored = cv2.resize(restored, (w, h), interpolation=cv2.INTER_LINEAR)
+    assert event_vis.shape[:2] == (h, w) and restored.shape[:2] == (h, w), (
+        f"triptych size mismatch: hazy {hazy.shape[:2]}, "
+        f"event {event_vis.shape[:2]}, restored {restored.shape[:2]}"
+    )
     panel = np.concatenate([hazy, event_vis, restored], axis=1)
     cv2.imwrite(save_path, cv2.cvtColor(panel, cv2.COLOR_RGB2BGR))

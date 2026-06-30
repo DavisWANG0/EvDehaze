@@ -9,15 +9,13 @@ Example
 python scripts/annotate_realworld_outputs.py \\
   --out_dir outputs/evdehaze_realworld_flex35k_sots480 \\
   --data_dir /path/to/realworld_capture \\
-  --capture_prefix 20250415 --event_time_crop --sots_frame
+  --capture_prefix 20250415 --event_time_crop --sots_frame --max_side 384
 """
 import argparse
-import os
 import sys
 from pathlib import Path
 
 import numpy as np
-import torch
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,12 +27,7 @@ from utils.realworld_vis import (
     save_triptych,
 )
 from utils.event_voxel import SOTS_EVENT_WINDOW_MS
-from visualize_realworld import (
-    _apply_sots_frame,
-    _hazy_bgr,
-    _load_event,
-    collect_pairs,
-)
+from visualize_realworld import collect_pairs, prepare_display_pair
 
 
 def parse_args():
@@ -52,17 +45,15 @@ def parse_args():
     ap.add_argument("--event_modulo", action="store_true")
     ap.add_argument("--include_misaligned", action="store_true")
     ap.add_argument("--sots_frame", action="store_true")
+    ap.add_argument("--max_side", type=int, default=256,
+                    help="must match the inference run (384 typical with --sots_frame)")
     ap.add_argument("--no_event", action="store_true")
     ap.add_argument("--skip_existing", action="store_true",
                     help="skip if event_vis and channel_hist already exist")
-    return ap.parse_args()
-
-
-def _pair_by_stem(pairs, stem):
-    for p in pairs:
-        if Path(p["_rgb_abs"]).stem == stem:
-            return p
-    return None
+    args = ap.parse_args()
+    if args.sots_frame and args.max_side == 256:
+        args.max_side = 384
+    return args
 
 
 def main():
@@ -76,7 +67,7 @@ def main():
     out_dir = Path(args.out_dir)
     restored_paths = sorted(
         p for p in out_dir.glob("*_restored.png")
-        if not p.stem.endswith("_hazy")
+        if "_hazy_restored" not in p.name
     )
     if not restored_paths:
         raise SystemExit(f"no *_restored.png in {out_dir}")
@@ -95,35 +86,26 @@ def main():
             print(f"  [{i+1}] skip existing {stem}", flush=True)
             continue
 
-        restored_bgr = np.array(Image.open(rp).convert("RGB"))[..., ::-1]
-        restored_rgb = restored_bgr[..., ::-1]
+        restored_rgb = np.array(Image.open(rp).convert("RGB"))
+        oh, ow = restored_rgb.shape[:2]
 
-        hazy_bgr = _hazy_bgr(pair["_rgb_abs"], sots_frame=args.sots_frame)
-        if hazy_bgr.shape[:2] != restored_bgr.shape[:2]:
-            h, w = restored_bgr.shape[:2]
-            hazy_bgr = np.array(
-                Image.fromarray(hazy_bgr[..., ::-1]).resize((w, h), Image.BICUBIC)
-            )[..., ::-1]
-        hazy_rgb = hazy_bgr[..., ::-1]
+        hazy_rgb, ev = prepare_display_pair(
+            pair["_rgb_abs"], pair, args, oh, ow, root=pair.get("_root"),
+        )
 
         ev_vis_rgb = None
-        if not args.no_event:
-            ev = _load_event(pair, pair.get("_root"), args)
-            if args.sots_frame:
-                lq_dummy = torch.zeros(1, 3, hazy_rgb.shape[0], hazy_rgb.shape[1])
-                _, ev, _, _ = _apply_sots_frame(lq_dummy, ev)
-            oh, ow = restored_rgb.shape[:2]
+        if ev is not None:
             ev_vis_rgb = event_tensor_to_vis(ev, oh, ow)
             Image.fromarray(ev_vis_rgb).save(ev_out)
 
         save_channel_histogram(
-            hazy_rgb, restored_rgb, str(hist_out), title=f"{stem} — channel histogram"
+            hazy_rgb, restored_rgb, str(hist_out), title=f"{stem} — channel histogram",
         )
         if ev_vis_rgb is not None:
             save_triptych(hazy_rgb, ev_vis_rgb, restored_rgb, str(trip_out))
 
-        print(f"  [{i+1}/{len(restored_paths)}] {stem} -> event_vis, channel_hist, triptych",
-              flush=True)
+        print(f"  [{i+1}/{len(restored_paths)}] {stem} aligned {ow}x{oh} -> "
+              f"event_vis, channel_hist, triptych", flush=True)
 
     print(f"annotated -> {out_dir}")
 

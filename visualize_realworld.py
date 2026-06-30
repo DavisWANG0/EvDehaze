@@ -165,7 +165,7 @@ def _crop_box_center_43(h, w):
 
 
 def _apply_sots_frame(lq, ev, out_h=SOTS_CLEAR_H, out_w=SOTS_CLEAR_W):
-    """1280x720 -> center 4:3 crop -> 640x480; event follows with bilinear."""
+    """Native frame -> center 4:3 crop -> SOTS clear size; event follows with bilinear."""
     h, w = lq.shape[-2:]
     y0, x0, y1, x1 = _crop_box_center_43(h, w)
     lq = lq[..., y0:y1, x0:x1]
@@ -174,6 +174,40 @@ def _apply_sots_frame(lq, ev, out_h=SOTS_CLEAR_H, out_w=SOTS_CLEAR_W):
         ev = ev[..., y0:y1, x0:x1]
         ev = F.interpolate(ev, size=(out_h, out_w), mode="bilinear", align_corners=False)
     return lq, ev, out_h, out_w
+
+
+def apply_spatial_pipeline(lq, ev, args, H_native, W_native):
+    """Match inference: optional SOTS crop, then max_side downscale (before pad)."""
+    if args.sots_frame:
+        lq, ev, H0, W0 = _apply_sots_frame(lq, ev)
+    else:
+        H0, W0 = H_native, W_native
+    if args.max_side and max(H0, W0) > args.max_side:
+        s = args.max_side / max(H0, W0)
+        wh = (max(1, round(H0 * s)), max(1, round(W0 * s)))
+        lq = F.interpolate(lq, size=wh, mode="bicubic", align_corners=False)
+        if ev is not None:
+            ev = F.interpolate(ev, size=wh, mode="bilinear", align_corners=False)
+    return lq, ev
+
+
+def _lq_tensor_to_rgb(lq):
+    """Normalized NCHW lq in [-1,1] -> HxWx3 uint8 RGB."""
+    x = lq.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
+    return np.clip((x * 0.5 + 0.5) * 255.0, 0, 255).astype(np.uint8)
+
+
+def prepare_display_pair(rgb_path, pair, args, target_h, target_w, root=None):
+    """Hazy RGB + event voxel aligned to the restored image grid."""
+    lq, H_native, W_native = _norm_rgb(rgb_path)
+    ev = None if args.no_event else _load_event(pair, root, args)
+    lq, ev = apply_spatial_pipeline(lq, ev, args, H_native, W_native)
+    dh, dw = lq.shape[-2:]
+    if (dh, dw) != (target_h, target_w):
+        lq = F.interpolate(lq, size=(target_h, target_w), mode="bicubic", align_corners=False)
+        if ev is not None:
+            ev = F.interpolate(ev, size=(target_h, target_w), mode="bilinear", align_corners=False)
+    return _lq_tensor_to_rgb(lq), ev
 
 
 def _hazy_bgr(rgb_path, sots_frame=False):
@@ -330,17 +364,7 @@ def main():
         lq = lq.to(device)
         ev = None if args.no_event else _load_event(pair, pair.get("_root"), args).to(device)
 
-        if args.sots_frame:
-            lq, ev, H0, W0 = _apply_sots_frame(lq, ev)
-        else:
-            H0, W0 = H_native, W_native
-
-        if args.max_side and max(H0, W0) > args.max_side:
-            s = args.max_side / max(H0, W0)
-            wh = (max(1, round(H0 * s)), max(1, round(W0 * s)))
-            lq = F.interpolate(lq, size=wh, mode="bicubic", align_corners=False)
-            if ev is not None:
-                ev = F.interpolate(ev, size=wh, mode="bilinear", align_corners=False)
+        lq, ev = apply_spatial_pipeline(lq, ev, args, H_native, W_native)
 
         lq_p, (H, W) = _pad_to(lq, args.pad_to)
         ev_p = None
@@ -362,14 +386,10 @@ def main():
             out = F.interpolate(
                 out, size=(H_native, W_native), mode="bicubic", align_corners=False
             ).clamp(-1.0, 1.0)
+            out_h, out_w = H_native, W_native
 
-        hazy_bgr = _hazy_bgr(rgb_path, sots_frame=args.sots_frame)
-        if hazy_bgr.shape[:2] != out.shape[-2:]:
-            hazy_bgr = np.array(
-                Image.fromarray(hazy_bgr[..., ::-1]).resize(
-                    (out_w, out_h), Image.BICUBIC
-                )
-            )[..., ::-1]
+        hazy_rgb = _lq_tensor_to_rgb(lq)
+        hazy_bgr = hazy_rgb[..., ::-1]
         restored = util_image.tensor2img(out * 0.5 + 0.5, rgb2bgr=True, min_max=(0, 1))
         trip = np.concatenate([hazy_bgr, restored], axis=1)
         util_image.imwrite(trip, os.path.join(args.out_dir, f"{name}_hazy_restored.png"),
@@ -378,7 +398,6 @@ def main():
                            chn="bgr", dtype_in="uint8")
 
         if not args.no_diagnostics:
-            hazy_rgb = hazy_bgr[..., ::-1]
             restored_rgb = restored[..., ::-1]
             diag_base = os.path.join(args.out_dir, name)
             if ev is not None:
