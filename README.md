@@ -77,10 +77,10 @@ We also augment [RESIDE/SOTS](https://sites.google.com/view/reside-dehaze-datase
 ### Real-World Visualization
 
 <p align="center">
-  <video src="assets/videos/realworld_panel.mp4" controls width="95%"></video>
+  <img src="assets/videos/realworld_panel_preview.gif" width="95%" alt="Real-world panel video preview">
 </p>
 
-[Download the real-world panel video](assets/videos/realworld_panel.mp4).
+[Download the MP4 version](assets/videos/realworld_panel.mp4).
 
 The following panels show representative real-world UAV captures with hazy input, event visualization, dehazed output, and RGB/luma histogram comparisons.
 
