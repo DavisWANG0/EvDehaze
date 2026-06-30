@@ -37,63 +37,63 @@ def _split_polarity_maps(event):
     h, w = ev.shape[1], ev.shape[2]
     nb = ev.shape[0] // 2
     ev4 = ev.reshape(nb, 2, h, w)
-    # sum accumulates sparse bins; max alone can be too thin on real-world data
-    pos = ev4[:, 0].sum(axis=0)
-    neg = ev4[:, 1].sum(axis=0)
+    pos = ev4[:, 0].max(axis=0)
+    neg = ev4[:, 1].max(axis=0)
     return pos, neg, h, w
 
 
-def _boost_event_map(m, p_low=1, p_high=98, gamma=0.38, thicken=5):
-    """Percentile norm + gamma + morphological thicken for sparse voxels."""
+def _normalize_event_map(m, p_low=2, p_high=99, gamma=0.62):
+    """Percentile stretch only — no morphological thicken."""
     if m.max() <= 0:
         return np.zeros_like(m, dtype=np.float32)
     lo, hi = np.percentile(m[m > 0], [p_low, p_high]) if np.any(m > 0) else (0, 1)
     if hi <= lo:
         hi = m.max()
         lo = 0
-    x = np.clip((m - lo) / (hi - lo + 1e-8), 0, 1) ** gamma
-    if thicken > 1:
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (thicken, thicken))
-        x = cv2.dilate((x * 255).astype(np.uint8), k, iterations=1).astype(np.float32) / 255.0
-    return x
+    return np.clip((m - lo) / (hi - lo + 1e-8), 0, 1) ** gamma
 
 
 def event_tensor_to_vis(event, out_h, out_w):
-    """High-contrast event activity map (for standalone event_vis.png)."""
+    """Activity heatmap for standalone event_vis.png."""
     pos, neg, h, w = _split_polarity_maps(event)
     assert (h, w) == (out_h, out_w)
-    activity = _boost_event_map(np.maximum(pos, neg), thicken=5)
+    activity = _normalize_event_map(np.maximum(pos, neg))
     vis = cv2.applyColorMap((activity * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
     return cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
 
 
-def event_overlay_on_rgb(hazy_rgb, event, dim_bg=0.32):
-    """Darken RGB, then paint thick red/cyan polarity events on top."""
+def event_overlay_on_rgb(hazy_rgb, event, dim_bg=0.48):
+    """Dim hazy, overlay thin red/cyan polarity (no dilation)."""
     hazy = _to_rgb_uint8(hazy_rgb).astype(np.float32)
     pos, neg, h, w = _split_polarity_maps(event)
     assert hazy.shape[0] == h and hazy.shape[1] == w
-    pos = _boost_event_map(pos, thicken=4)
-    neg = _boost_event_map(neg, thicken=4)
+    pos = _normalize_event_map(pos)
+    neg = _normalize_event_map(neg)
     base = hazy * dim_bg
     out = base.copy()
-    # red = ON, cyan = OFF
-    out[..., 0] = np.clip(base[..., 0] * (1 - pos * 0.85) + pos * 255, 0, 255)
-    out[..., 1] = np.clip(base[..., 1] * (1 - 0.45 * np.maximum(pos, neg)), 0, 255)
-    out[..., 2] = np.clip(base[..., 2] * (1 - neg * 0.85) + neg * 255, 0, 255)
+    # winner-take-all avoids muddy magenta where both polarities overlap
+    on = pos >= neg
+    off = neg > pos
+    out[on, 0] = np.clip(base[on, 0] + pos[on] * 180, 0, 255)
+    out[on, 1] = base[on, 1] * (1 - pos[on] * 0.35)
+    out[on, 2] = base[on, 2] * (1 - pos[on] * 0.35)
+    out[off, 2] = np.clip(base[off, 2] + neg[off] * 180, 0, 255)
+    out[off, 0] = base[off, 0] * (1 - neg[off] * 0.35)
+    out[off, 1] = base[off, 1] * (1 - neg[off] * 0.35)
     return out.astype(np.uint8)
 
 
 def event_on_black(event, out_h, out_w):
-    """Polarity on black — clearest event-only view."""
+    """Thin polarity strokes on black."""
     pos, neg, h, w = _split_polarity_maps(event)
     assert (h, w) == (out_h, out_w)
-    pos = _boost_event_map(pos, thicken=6)
-    neg = _boost_event_map(neg, thicken=6)
+    pos = _normalize_event_map(pos)
+    neg = _normalize_event_map(neg)
     out = np.zeros((h, w, 3), dtype=np.float32)
-    out[..., 0] = np.clip(pos * 255, 0, 255)
-    out[..., 2] = np.clip(neg * 255, 0, 255)
-    both = np.maximum(pos, neg)
-    out[..., 1] = both * 60
+    on = pos >= neg
+    off = neg > pos
+    out[on, 0] = pos[on] * 255
+    out[off, 2] = neg[off] * 255
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
@@ -178,9 +178,8 @@ def save_combined_panel(
     restored = _to_rgb_uint8(restored_rgb)
     h, w = hazy.shape[:2]
     if event_tensor is not None:
-        # black-bg polarity map: easiest to read; compare edges with hazy on the left
-        middle = event_on_black(event_tensor, h, w)
-        mid_title = "Event (+red / −blue)"
+        middle = event_overlay_on_rgb(hazy, event_tensor)
+        mid_title = "Event overlay"
     else:
         middle = _to_rgb_uint8(event_vis_rgb)
         mid_title = "Event"
