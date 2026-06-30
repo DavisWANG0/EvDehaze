@@ -1,14 +1,12 @@
-<h2 align="center">From Events to Clarity:<br>The Event-Guided Diffusion Framework for Dehazing</h2>
+<h2 align="center">[CVPR 2026] From Events to Clarity:<br>The Event-Guided Diffusion Framework for Dehazing</h2>
 
 <div align="center">
 
-_**[Ling Wang](https://daviswang0.github.io/)<sup>\*</sup>, [Yunfan Lu](https://yunfanlu.github.io/)<sup>\*</sup>, [Wenzong Ma](https://anthony-ecpkn.github.io/), [Huizai Yao](https://huizaivictoryao.github.io/), Pengteng Li, [Hui Xiong](https://ailab.hkust-gz.edu.cn/index.html)<sup>†</sup>**_
+**[Ling Wang](https://daviswang0.github.io/)<sup>\*</sup>, [Yunfan Lu](https://yunfanlu.github.io/)<sup>\*</sup>, [Wenzong Ma](https://anthony-ecpkn.github.io/), [Huizai Yao](https://huizaivictoryao.github.io/), Pengteng Li, [Hui Xiong](https://ailab.hkust-gz.edu.cn/index.html)<sup>†</sup>**
 
 The Hong Kong University of Science and Technology (Guangzhou)
 
-<sup>\*</sup>Equal contribution; <sup>†</sup>Corresponding author
-
-<br>
+<sup>†</sup>Corresponding author
 
 [![Project Page](https://img.shields.io/badge/Project-Page-green?logo=googlechrome&logoColor=white)](https://evdehaze.github.io/)
 [![CVPR 2026](https://img.shields.io/badge/CVPR-2026-blue)](https://cvpr.thecvf.com/virtual/2026/poster/37331)
@@ -283,10 +281,12 @@ This implementation builds on [ResShift](https://github.com/zsyOAOA/ResShift), [
 If you find this work useful, please consider citing:
 
 ```bibtex
-@inproceedings{wang2026evdehaze,
+@inproceedings{wang2026events,
   title={From Events to Clarity: The Event-Guided Diffusion Framework for Dehazing},
   author={Wang, Ling and Lu, Yunfan and Ma, Wenzong and Yao, Huizai and Li, Pengteng and Xiong, Hui},
   booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={34028--34039},
+  month={June},
   year={2026}
 }
 ```
