@@ -1,4 +1,4 @@
-<h2 align="center">EvDehaze: From Events to Clarity The Event-Guided Diffusion Framework for Dehazing</h2>
+<h2 align="center">From Events to Clarity:</h2><h2 align="center">The Event-Guided Diffusion Framework for Dehazing</h2>
 
 <div align="center">
 
