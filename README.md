@@ -61,7 +61,7 @@ The supplementary material reports **6,674 event segments** and **61,173 aligned
 ### Synthetic RGB-Event Data
 
 <p align="center">
-  <img src="assets/figs/reside_event.png" width="95%" alt="Simulated RGB-event data on RESIDE">
+  <img src="assets/figs/reside_event.png" width="65%" alt="Simulated RGB-event data on RESIDE">
 </p>
 
 We also augment [RESIDE/SOTS](https://sites.google.com/view/reside-dehaze-datasets/reside-v0) with simulated events under radial, rotational, and translational motions, enabling supervised training and evaluation with paired hazy/clear RGB images and corresponding event streams.
