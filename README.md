@@ -2,11 +2,11 @@
 
 <div align="center">
 
-_**Ling Wang<sup>\*</sup>, Yunfan Lu<sup>\*</sup>, Wenzong Ma, Huizai Yao, Pengteng Li, Hui Xiong<sup>†</sup>**_
+_**[Ling Wang](https://daviswang0.github.io/)<sup>\*</sup>, [Yunfan Lu](https://yunfanlu.github.io/)<sup>\*</sup>, [Wenzong Ma](https://anthony-ecpkn.github.io/), [Huizai Yao](https://huizaivictoryao.github.io/), Pengteng Li, [Hui Xiong](https://ailab.hkust-gz.edu.cn/index.html)<sup>†</sup>**_
 
 The Hong Kong University of Science and Technology (Guangzhou)
 
-<sup>†</sup>Corresponding author
+<sup>\*</sup>Equal contribution; <sup>†</sup>Corresponding author
 
 <br>
 
@@ -97,7 +97,7 @@ The following panels show representative real-world UAV captures with hazy input
 | ResShift | Yes | 29.06 | 0.950 | 0.017 | 16.26 | 0.625 | 0.327 | 114.65M |
 | **EvDehaze** | **Yes** | **34.12** | **0.986** | **0.012** | **18.43** | **0.637** | **0.313** | 122.68M |
 
-**Evaluation protocol.** Due to limited compute resources, our quantitative experiments follow part of the settings and reported baselines from [DiffLID](https://github.com/aaaasan111/difflid). To ensure a fair comparison between transformer-based and diffusion-based methods, we uniformly use a training-free bicubic resizing protocol and compute metrics at **128 x 128** resolution. For final qualitative visualizations, we consistently run and display results at the original resolution.
+**Evaluation protocol.** Due to limited compute resources (some experiments were finalized after graduation, when access to the university HPC cluster was no longer available), our quantitative experiments follow the settings and reported baselines from [DiffLID](https://github.com/aaaasan111/difflid). To ensure a fair comparison between transformer-based and diffusion-based methods, we uniformly use a training-free bicubic resizing protocol and compute metrics at **128 x 128** resolution. For final qualitative visualizations, we consistently run and display results at the original resolution.
 
 EvDehaze is designed as a generative, event-guided diffusion method. Its main target is perceptual realism under haze: clearer edges, stronger contrast, and fewer artifacts in real-world scenes.
 
