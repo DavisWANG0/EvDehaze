@@ -15,7 +15,7 @@ The Hong Kong University of Science and Technology (Guangzhou)
 </div>
 
 <p align="center">
-  <img src="assets/figs/teaser.png" width="95%" alt="EvDehaze teaser">
+  <img src="assets/figs/teaser.png" width="70%" alt="EvDehaze teaser">
 </p>
 
 ## Introduction
