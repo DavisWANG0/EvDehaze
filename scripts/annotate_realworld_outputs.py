@@ -97,7 +97,8 @@ def main():
             Image.fromarray(ev_vis_rgb).save(ev_out)
             save_combined_panel(
                 hazy_rgb, ev_vis_rgb, restored_rgb, str(panel_out),
-                title=f"{stem} — dehazing panel",
+                title=f"{stem}",
+                event_tensor=ev,
             )
         else:
             save_combined_panel(

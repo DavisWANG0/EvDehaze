@@ -404,7 +404,8 @@ def main():
                 Image.fromarray(ev_vis).save(f"{diag_base}_event_vis.png")
                 save_combined_panel(
                     hazy_rgb, ev_vis, restored_rgb, f"{diag_base}_panel.png",
-                    title=f"{name} — dehazing panel",
+                    title=f"{name}",
+                    event_tensor=ev,
                 )
 
         frame_tag = f"sots640x480" if args.sots_frame else f"{W_native}x{H_native}"
