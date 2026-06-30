@@ -36,6 +36,11 @@ os.environ.setdefault("LOCAL_RANK", "0")
 
 from utils.util_common import get_obj_from_str
 from utils import util_image
+from utils.realworld_vis import (
+    event_tensor_to_vis,
+    save_channel_histogram,
+    save_triptych,
+)
 from utils.event_voxel import (
     load_event_voxel_for_rgb,
     parse_frame_ms,
@@ -88,6 +93,8 @@ def parse_args():
     ap.add_argument("--max_images", type=int, default=0)
     ap.add_argument("--no_event", action="store_true")
     ap.add_argument("--device", default="cuda:0")
+    ap.add_argument("--no_diagnostics", action="store_true",
+                    help="skip event_vis, channel histogram, and triptych outputs")
     args = ap.parse_args()
     if args.sots_frame:
         args.no_upscale = True
@@ -369,6 +376,20 @@ def main():
                            chn="bgr", dtype_in="uint8")
         util_image.imwrite(restored, os.path.join(args.out_dir, f"{name}_restored.png"),
                            chn="bgr", dtype_in="uint8")
+
+        if not args.no_diagnostics:
+            hazy_rgb = hazy_bgr[..., ::-1]
+            restored_rgb = restored[..., ::-1]
+            diag_base = os.path.join(args.out_dir, name)
+            if ev is not None:
+                ev_vis = event_tensor_to_vis(ev, out_h, out_w)
+                Image.fromarray(ev_vis).save(f"{diag_base}_event_vis.png")
+                save_triptych(hazy_rgb, ev_vis, restored_rgb, f"{diag_base}_triptych.png")
+            save_channel_histogram(
+                hazy_rgb, restored_rgb, f"{diag_base}_channel_hist.png",
+                title=f"{name} — channel histogram",
+            )
+
         frame_tag = f"sots640x480" if args.sots_frame else f"{W_native}x{H_native}"
         print(f"  [{i+1}/{len(pairs)}] {name} native={W_native}x{H_native} "
               f"infer={out_w}x{out_h} frame={frame_tag} "

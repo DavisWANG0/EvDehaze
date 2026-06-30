@@ -539,6 +539,7 @@ class PairedDataAligned(Dataset):
         dir_path,
         dir_path_extra,
         pch_size=128,
+        pch_sizes=None,
         mean=0.5,
         std=0.5,
         max_value=255,
@@ -574,6 +575,8 @@ class PairedDataAligned(Dataset):
 
         self.dir_path_extra = dir_path_extra
         self.pch_size = int(pch_size)
+        self.pch_sizes = [int(x) for x in pch_sizes] if pch_sizes else None
+        self.is_val = bool(is_val)
         self.mean = float(mean)
         self.std = float(std)
         self.max_value = float(max_value)
@@ -725,6 +728,11 @@ class PairedDataAligned(Dataset):
             ).squeeze(0)
         return event_tensor
 
+    def _sample_pch(self):
+        if self.pch_sizes and not self.is_val:
+            return int(random.choice(self.pch_sizes))
+        return self.pch_size
+
     def __getitem__(self, index):
         # ---------------------------------------------------------------- 0. tiled-128 val path
         if self.tile_val:
@@ -738,7 +746,7 @@ class PairedDataAligned(Dataset):
 
         # ---------------------------------------------------------------- 3. pad if smaller than pch
         H, W = im_base.shape[:2]
-        pch = self.pch_size
+        pch = self._sample_pch()
         if H < pch or W < pch:
             pad_h = max(0, pch - H)
             pad_w = max(0, pch - W)
