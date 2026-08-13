@@ -56,7 +56,7 @@ Given a hazy RGB frame and the corresponding event stream, EvDehaze predicts a d
 
 We build a UAV-based acquisition platform with a PROPHESSEE EVK4 HD event camera and an Intel RealSense D435i RGB camera. The dataset is captured in outdoor hazy scenes with synchronized RGB-event recording, supporting qualitative evaluation under real visibility degradation.
 
-The supplementary material reports **6,674 event segments** and **61,173 aligned hazy RGB images**. Dataset release details will be added to the project page.
+The supplementary material reports **6,674 event segments** and **61,173 aligned hazy RGB images**. The [RealWorld EventRGB Data](https://drive.google.com/drive/u/6/folders/1P7Tx1FoC1-82YQpJ2-N_lO66fanqOM4h) is available on Google Drive.
 
 ### Synthetic RGB-Event Data
 
