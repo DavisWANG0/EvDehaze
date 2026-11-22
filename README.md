@@ -64,7 +64,7 @@ The supplementary material reports **6,674 event segments** and **61,173 aligned
   <img src="assets/figs/reside_event.png" width="70%" alt="Simulated RGB-event data on RESIDE">
 </p>
 
-The 6-DoF generator renders a camera trajectory around each clear image and simulates events with Vid2E's ESIM backend. Each stream produces a temporal pyramid with three levels and two time bins per level (Sec. 4.2). See [img2event](img2event/README.md) for data preparation.
+We also augment [RESIDE/SOTS](https://sites.google.com/view/reside-dehaze-datasets/reside-v0) with simulated events under radial, rotational, and translational motions, enabling supervised training and evaluation with paired hazy/clear RGB images and corresponding event streams.
 
 ## Results
 
