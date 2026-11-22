@@ -1,7 +1,7 @@
 # ==============================================================================
 # EvDehaze on NH-HAZE: event-conditioned ResShift latent diffusion (15 steps).
 #   input 128 -> bicubic Up -> frozen VQ-VAE encode -> ResShift diffusion (15 steps)
-#   (EvDehaze UNet conditioned on hazy + event TPR) -> VAE decode -> bicubic Down -> 128
+#   (EvDehaze UNet conditioned on hazy + event voxels) -> VAE decode -> bicubic Down -> 128
 # Resampling between 128px and the VAE resolution is plain bicubic (no learnable
 # resampler); the VAE stays frozen and only the UNet and a zero-init latent
 # residual correction are trained.

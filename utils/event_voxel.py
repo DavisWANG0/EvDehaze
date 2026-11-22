@@ -7,6 +7,8 @@ import numpy as np
 SOTS_EVENT_WINDOW_MS = 83
 # Real-world event npy files cover ~1 s (t in microseconds).
 REALWORLD_EVENT_SPAN_MS = 1000
+TPR_SHAPE = (3, 2)
+TPR_WINDOW_REDUCTION = 1.5
 
 
 def parse_frame_ms(rgb_path):
@@ -71,6 +73,28 @@ def crop_events_temporal(
     hi = t0 + (off_ms + win_ms) * 1000.0
     mask = (t >= lo) & (t < hi)
     return events[mask]
+
+
+def events_to_temporal_pyramid(events, height, width, *, start_time, end_time):
+    """Accumulate signed counts in (levels, bins, height, width) over a capture interval."""
+    if end_time <= start_time:
+        raise ValueError('The event capture interval must have positive duration')
+    levels, bins = TPR_SHAPE
+    pyramid = np.zeros((levels, bins, height, width), dtype=np.float32)
+    columns = events['x'].astype(np.intp)
+    rows = events['y'].astype(np.intp)
+    valid = (columns >= 0) & (columns < width) & (rows >= 0) & (rows < height)
+    times = (events['t'][valid] - start_time).astype(np.float64) / (end_time - start_time) - 0.5
+    rows, columns = rows[valid], columns[valid]
+    signs = np.where(events['p'][valid] > 0, 1, -1)
+
+    for level, level_voxel in enumerate(pyramid):
+        half_window = 0.5 / TPR_WINDOW_REDUCTION ** level
+        inside = np.abs(times) <= half_window
+        positions = 0.5 + times[inside] / (2 * half_window)
+        bin_indices = np.minimum((positions * bins).astype(np.intp), bins - 1)
+        np.add.at(level_voxel, (bin_indices, rows[inside], columns[inside]), signs[inside])
+    return pyramid
 
 
 def events_to_voxel_grid(events, num_bins=4, height=None, width=None, normalize=True):

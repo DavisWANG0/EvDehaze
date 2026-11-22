@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """EvDehaze inference / evaluation.
 
-Runs the released event-conditioned ResShift dehazer on the validation set and
+Runs the event-conditioned ResShift dehazer on the validation set and
 reports PSNR / SSIM / LPIPS. Two inference modes:
 
   --mode deterministic  (default)  zero initial noise + mean-only reverse steps
@@ -16,9 +16,8 @@ Optional sharding for multi-GPU eval (each process handles 1/NUM_SHARDS of the
 images, then run `--combine` to merge the partial results):
   SHARD / NUM_SHARDS env vars + --shard_out <file>
 
-The checkpoint, config and target are taken from --config / --diffusion_ckpt /
---resample_ckpt. The config already encodes steps=15 and latent_correction=True,
-matching the released checkpoint.
+Use --config, --diffusion_ckpt and --resample_ckpt to select the configuration
+and the corresponding trained weights.
 
 Examples
 --------
@@ -132,6 +131,8 @@ def main():
     if args.combine:
         combine(args); return
 
+    from datapipe.datasets import create_dataset
+
     shard = int(os.environ.get("SHARD", "0"))
     num_shards = int(os.environ.get("NUM_SHARDS", "1"))
 
@@ -140,7 +141,9 @@ def main():
     trainer.configs = cfg
     trainer.init_logger()
     trainer.build_model()
-    trainer.build_dataloader()
+    val_loader = torch.utils.data.DataLoader(
+        create_dataset(cfg.data.val), batch_size=cfg.train.batch[1], pin_memory=True
+    )
     model = trainer.model; model.eval()
     ae = trainer.autoencoder; ae.eval()
     bd = trainer.base_diffusion
@@ -156,7 +159,7 @@ def main():
 
     psnr_sum = ssim_sum = lpips_sum = 0.0
     nimg = 0
-    for ii, data in enumerate(trainer.dataloaders["val"]):
+    for ii, data in enumerate(val_loader):
         if ii % num_shards != shard:
             continue
         data = trainer.prepare_data(data, phase="val")

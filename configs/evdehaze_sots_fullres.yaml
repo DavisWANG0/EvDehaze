@@ -1,18 +1,14 @@
 # ==============================================================================
 # EvDehaze on SOTS — original-resolution (qualitative) configuration.
 #
-# The released numeric configuration (configs/evdehaze_sots.yaml) evaluates on
+# The SOTS configuration (configs/evdehaze_sots.yaml) evaluates on
 # 128x128 tiles so diffusion- and transformer-based methods are compared at the
 # same resolution. For the final visualizations we instead run the *whole* image
 # at its original resolution (no tiling / no squeeze to 128). The UNet matches
 # event features relative to the input latent size, so event guidance stays
 # active at any resolution (models.evdehaze_flexible_resolution.EvDehazeFlexibleResolution).
 #
-# The pipeline is otherwise identical to the release: the frozen VQ-f4 VAE is
-# bridged by the same bicubic Up/Down (x2) it was trained with, the diffusion
-# UNet, event encoder and latent residual correction are unchanged, and a
-# trained EvDehaze checkpoint loads as-is. This config is meant for visualize.py
-# (qualitative output at the native image size), not for metric reporting.
+# The VQ-f4 VAE uses the same bicubic up/downsampling (2x) as training.
 # visualize.py defaults to --max_side 256: downscale for inference, upscale back
 # to native on save (avoids VAE / attention OOM on large images).
 # ==============================================================================
@@ -48,13 +44,9 @@ model:
     cond_lq: True
     lq_size: 128
     event_in_channels: 8          # 4 temporal bins x 2 polarities
-    event_encoder_type: pyramid   # TPR (L=3 x M=2) -> 3 conv + pooling encoder
+    event_encoder_type: pyramid   # 3 conv + pooling encoder
 
 resample:
-  # Same bicubic VAE bridge as the release (Up/Down x2 around the frozen VQ-f4
-  # VAE); here it is applied to the whole native image rather than 128 tiles.
-  # The only trained component is the zero-init latent residual correction
-  # (identical weights to the 128px release).
   ckpt_path: ~
   latent_correction: True
   latent_kwargs:

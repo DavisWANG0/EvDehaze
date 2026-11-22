@@ -64,7 +64,7 @@ The supplementary material reports **6,674 event segments** and **61,173 aligned
   <img src="assets/figs/reside_event.png" width="70%" alt="Simulated RGB-event data on RESIDE">
 </p>
 
-We also augment [RESIDE/SOTS](https://sites.google.com/view/reside-dehaze-datasets/reside-v0) with simulated events under radial, rotational, and translational motions, enabling supervised training and evaluation with paired hazy/clear RGB images and corresponding event streams.
+The 6-DoF generator renders a camera trajectory around each clear image and simulates events with Vid2E's ESIM backend. Each stream produces a temporal pyramid with three levels and two time bins per level (Sec. 4.2). See [img2event](img2event/README.md) for data preparation.
 
 ## Results
 
@@ -107,7 +107,7 @@ EvDehaze is designed as a generative, event-guided diffusion method. Its main ta
 - `visualize.py`: original-resolution visualization on configured validation data.
 - `visualize_realworld.py`: visualization for real-world RGB-event captures.
 - `configs/`: YAML configurations for SOTS, NH-HAZE, and full-resolution visualization.
-- `checkpoints/`: expected location for released EvDehaze diffusion and resample checkpoints.
+- `checkpoints/`: location for trained EvDehaze diffusion and resample checkpoints.
 - `weights/`: expected location for the frozen VQ-f4 autoencoder checkpoint.
 
 ### Training and Data
@@ -135,7 +135,7 @@ The code was developed with PyTorch 2.x, CUDA 11.8, and Python 3.10.
 
 ## Checkpoints
 
-Please place the checkpoints as follows:
+Training requires the frozen VQ-f4 autoencoder checkpoint. For inference, pass the diffusion and resample checkpoints trained with the selected event representation.
 
 ```text
 EvDehaze
@@ -177,12 +177,10 @@ datasets/
 └── NH-HAZE/
     ├── train/
     │   ├── hazy/
-    │   ├── clear/
-    │   └── clear_events_preprocessed/
+    │   └── clear/
     └── test/
         ├── hazy/
-        ├── clear/
-        └── clear_events_preprocessed/
+        └── clear/
 ```
 
 ### Real-World RGB-Event Captures
@@ -212,6 +210,9 @@ python inference.py \
 
 ```bash
 python inference.py \
+  --config configs/evdehaze_sots.yaml \
+  --diffusion_ckpt checkpoints/evdehaze_diffusion_ema.pth \
+  --resample_ckpt checkpoints/evdehaze_resample.pth \
   --mode deterministic \
   --tta \
   --num_flips 8
@@ -222,15 +223,21 @@ python inference.py \
 ```bash
 for s in 0 1 2; do
   CUDA_VISIBLE_DEVICES=$s SHARD=$s NUM_SHARDS=3 \
-    python inference.py --mode deterministic --tta --num_flips 8 \
+    python inference.py --config configs/evdehaze_sots.yaml \
+      --diffusion_ckpt checkpoints/evdehaze_diffusion_ema.pth \
+      --resample_ckpt checkpoints/evdehaze_resample.pth \
+      --mode deterministic --tta --num_flips 8 \
       --shard_out shard_$s.json &
 done
+wait
 wait
 
 python inference.py --combine --shard_glob 'shard_*.json'
 ```
 
 ### Visualize validation images
+
+This example uses the full-resolution voxel configuration and its matching checkpoints.
 
 ```bash
 python visualize.py \
@@ -257,13 +264,15 @@ python visualize_realworld.py \
 ### Train on SOTS / RESIDE
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2 bash scripts/train_sots.sh
+CUDA_VISIBLE_DEVICES=0,1,2 bash scripts/train_sots.sh \
+  --cfg_path configs/evdehaze_sots_tpr.yaml --save_dir outputs/evdehaze-sots-tpr
 ```
 
 ### Train on NH-HAZE
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 bash scripts/train_nhhaze.sh
+CUDA_VISIBLE_DEVICES=0,1 bash scripts/train_nhhaze.sh \
+  --cfg_path configs/evdehaze_nhhaze_tpr.yaml --save_dir outputs/evdehaze-nhhaze-tpr
 ```
 
 Both scripts launch single-node distributed training with `torch.distributed.run`. Update the YAML files in `configs/` if your dataset or checkpoint paths differ.

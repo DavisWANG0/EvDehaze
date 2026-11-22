@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 """EvDehaze original-resolution visualization.
 
-Runs the released event-conditioned ResShift dehazer on the *whole* image at its
-original resolution (no tiling / no squeeze to 128) and writes the restored
-images. This is the qualitative counterpart of inference.py (which reports 128px
-tile metrics). The pipeline is identical to the release -- same bicubic VAE
-bridge, diffusion UNet, event encoder and latent correction -- except the UNet
-matches event features relative to the input latent size so event guidance stays
-active at native resolution (EvDehazeFlexibleResolution). Weights load unchanged.
+Restores whole images without tiling. EvDehazeFlexibleResolution matches event
+features relative to the input latent size and loads weights trained with the
+same event representation and model parameters.
 
 Each input is reflect-padded so the VAE latent is a multiple of the UNet window
 (`--pad_to`), restored, then cropped back to the original size. Large images are

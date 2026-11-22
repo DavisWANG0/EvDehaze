@@ -12,12 +12,14 @@ from torch.utils.data import Dataset
 from utils import util_sisr
 from utils import util_image
 from utils import util_common
+from utils.event_voxel import TPR_SHAPE
 
 from basicsr.data.transforms import augment
 from basicsr.data.realesrgan_dataset import RealESRGANDataset
 from .ffhq_degradation_dataset import FFHQDegradationDataset
 from .degradation_bsrgan.bsrgan_light import degradation_bsrgan_variant, degradation_bsrgan
 from .masks import MixedMaskGenerator
+
 
 class LamaDistortionTransform:
     def __init__(self, kwargs):
@@ -524,14 +526,9 @@ class PairedDataAligned(Dataset):
               event_dirs:
                 preprocessed: <event_npz_dir>
 
-    备注:
-      - 当前实现只支持 ITS_v2 主用的 preprocessed 单文件 voxel 格式（npz['voxel']
-        shape (4, 2, He, We)）。原始 4-key 事件流 (t, x, y, p) 暂不实现，因为
-        在 ITS_v2 训练里没用到；如以后需要可对照 PairedData._event_stream_to_*
-        系列方法补回。
-      - 默认对齐方式：先把 event bilinear resize 到 (H_orig, W_orig)，再 crop。
-        这与 PromptIR 修复版本（先 resize 到 RGB orig，再 RandomCrop.get_params
-        共享坐标）一致。
+    ``event_dirs.preprocessed`` loads (4, 2, He, We) voxels and resizes them to
+    the paired image size. ``event_dirs.tpr`` loads (3, 2, H, W) pyramids at
+    the clear image size and applies the same center crop as the clear image.
     """
 
     def __init__(
@@ -605,6 +602,16 @@ class PairedDataAligned(Dataset):
         else:
             self.event_dirs = event_dirs
 
+        self.tpr_dir = Path(self.event_dirs['tpr']) if 'tpr' in self.event_dirs else None
+        if self.tpr_dir is not None:
+            if 'preprocessed' in self.event_dirs:
+                raise ValueError('Choose one event input directory: tpr or preprocessed')
+            levels, bins = TPR_SHAPE
+            if self.event_channels != levels * bins:
+                raise ValueError(f'TPR input requires {levels * bins} event channels')
+            if not self.tpr_dir.is_dir():
+                raise FileNotFoundError(f'Event directory missing: {self.tpr_dir}')
+
         # In-RAM cache of decoded full-res (im_base, im_extra, event) per file index.
         self.use_cache = bool(cache)
         self._cache = {}
@@ -634,17 +641,20 @@ class PairedDataAligned(Dataset):
     def _load_full(self, index):
         """Load full-res (im_base uint8 HxWx3, im_extra uint8 HxWx3, event (C,H,W)).
         Cropped to the common min size; optionally cached in RAM."""
-        if self.use_cache and index in self._cache:
+        if index in self._cache:
             return self._cache[index]
         im_path_base = self.file_paths[index]
         im_base = util_image.imread(im_path_base, chn='rgb', dtype='uint8')
         clear_id = self._clear_id(im_path_base)
         im_path_extra = Path(self.dir_path_extra) / f"{clear_id}{Path(im_path_base).suffix}"
         im_extra = util_image.imread(im_path_extra, chn='rgb', dtype='uint8')
+        clear_shape = im_extra.shape[:2]
         # hazy 与 clear 尺寸可能不同 (如 SOTS hazy 620x460 vs clear 640x480),
         # 且 hazy 对应 clear 的中心区域 -> 必须居中裁剪对齐, 否则 tiled 评测整体错位.
         h_min = min(im_base.shape[0], im_extra.shape[0])
         w_min = min(im_base.shape[1], im_extra.shape[1])
+        gt_top = (im_extra.shape[0] - h_min) // 2
+        gt_left = (im_extra.shape[1] - w_min) // 2
 
         def _cc(im):
             h, w = im.shape[:2]
@@ -654,10 +664,16 @@ class PairedDataAligned(Dataset):
 
         im_base = _cc(im_base)
         im_extra = _cc(im_extra)
-        event_tensor = self._load_event_voxel(clear_id, h_min, w_min)
+        if self.tpr_dir is None:
+            event_tensor = self._load_event_voxel(clear_id, h_min, w_min)
+        else:
+            event_tensor = self._load_tpr_event_voxel(clear_id, clear_shape)
+            event_tensor = event_tensor[:, gt_top:gt_top + h_min, gt_left:gt_left + w_min]
         result = (im_base, im_extra, event_tensor)
         if self.use_cache:
             self._cache[index] = result
+        elif self.tile_val and self.tpr_dir is not None:
+            self._cache = {index: result}
         return result
 
     def __len__(self):
@@ -727,6 +743,17 @@ class PairedDataAligned(Dataset):
                 align_corners=align_corners,
             ).squeeze(0)
         return event_tensor
+
+    def _load_tpr_event_voxel(self, file_name, clear_shape):
+        path = self.tpr_dir / f'{file_name}.npz'
+        with np.load(path) as event_file:
+            if 'tpr' not in event_file:
+                raise ValueError(f'{path} must contain a tpr array')
+            pyramid = event_file['tpr']
+        expected_shape = TPR_SHAPE + clear_shape
+        if pyramid.shape != expected_shape:
+            raise ValueError(f'Expected TPR shape {expected_shape} in {path}, got {pyramid.shape}')
+        return torch.from_numpy(pyramid.reshape(self.event_channels, *clear_shape)).float()
 
     def _sample_pch(self):
         if self.pch_sizes and not self.is_val:

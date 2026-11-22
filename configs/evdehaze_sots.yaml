@@ -1,13 +1,11 @@
 # ==============================================================================
 # EvDehaze on SOTS (RESIDE indoor): event-conditioned ResShift latent diffusion.
 #   input 128 -> bicubic Up -> frozen VQ-VAE encode -> ResShift diffusion (15 steps)
-#   (EvDehaze UNet conditioned on hazy + event TPR) -> VAE decode -> bicubic Down -> 128
+#   (EvDehaze UNet conditioned on hazy + event voxels) -> VAE decode -> bicubic Down -> 128
 # Resampling between 128px and the VAE resolution is plain bicubic (no learnable
 # resampler), so diffusion- and transformer-based methods are compared at 128x128.
 # A zero-init latent residual correction on the predicted clean latent removes the
 # systematic VAE-latent bias. The VAE stays frozen.
-# Event features come from a temporal pyramid representation (L=3 x M=2) followed
-# by a 3-conv + pooling encoder, fused into the UNet via cross-attention.
 # ==============================================================================
 
 trainer:
@@ -41,7 +39,7 @@ model:
     cond_lq: True
     lq_size: 128
     event_in_channels: 8          # 4 temporal bins x 2 polarities
-    event_encoder_type: pyramid   # TPR (L=3 x M=2) -> 3 conv + pooling encoder
+    event_encoder_type: pyramid   # 3 conv + pooling encoder
 
 resample:
   # Up/Down are plain bicubic (no learnable resampler). The only trained component
